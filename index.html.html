@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Skandenberg">
+<title>Skandenberg Pro</title>
+<style>
+:root{--card:#181b22;--card2:#222735;--text:#f4f4f5;--muted:#a1a1aa;--accent:#ff7a00;--green:#22c55e;--red:#ef4444;--border:#343948}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#090a0d,#151923);color:var(--text)}
+header{position:sticky;top:0;z-index:10;background:#0f1115e8;backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:calc(12px + env(safe-area-inset-top)) 16px 12px}
+h1{margin:0;font-size:21px} h2{font-size:22px;margin:8px 0 12px} small{color:var(--muted)}
+.wrap{max-width:980px;margin:auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;margin:12px 0;box-shadow:0 8px 24px #0004}
+textarea,input,select{width:100%;background:#0b0d12;color:var(--text);border:1px solid var(--border);border-radius:14px;padding:13px;font-size:16px;outline:none}
+textarea{min-height:190px;resize:vertical}
+button{border:0;border-radius:14px;padding:13px 14px;font-size:16px;font-weight:800;color:#111;background:var(--accent);cursor:pointer}
+button.secondary{background:#2f3545;color:var(--text)} button.green{background:var(--green);color:#07120a} button.red{background:var(--red);color:#fff}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:700px){.row{grid-template-columns:1fr}}
+.match{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}
+.fighter{background:var(--card2);border:1px solid var(--border);border-radius:16px;padding:14px;text-align:center;font-weight:800;font-size:20px}
+.vs{color:var(--muted);font-weight:800;text-align:center}
+.pill{display:inline-block;border-radius:999px;padding:6px 10px;font-size:13px;font-weight:800;margin:4px;background:#2f3545;color:var(--text)}
+.pill.ok{background:#12361f;color:#85efac}.pill.bad{background:#411818;color:#fecaca}.pill.orange{background:#3b260d;color:#fdba74}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:15px} th,td{border-bottom:1px solid var(--border);padding:9px;text-align:left} th{color:#fbbf24}
+.hidden{display:none}.notice{background:#24190d;border:1px solid #51300a;color:#fed7aa;padding:11px;border-radius:14px;margin-top:10px;line-height:1.35}
+.install{background:#102039;border:1px solid #29466f;color:#bfdbfe}.footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
+.stage{background:linear-gradient(135deg,#ff7a00,#facc15);color:#111;border-radius:18px;padding:16px;text-align:center;font-weight:900;font-size:24px;margin:12px 0;letter-spacing:.5px}
+.stage.final{background:linear-gradient(135deg,#facc15,#ff7a00)}.stage.third{background:linear-gradient(135deg,#cd7f32,#ffb86b)}
+.podium{background:#10151f;border:1px solid #3b4661;border-radius:16px;padding:14px;margin-top:12px;font-size:18px;line-height:1.8}
+</style>
+</head>
+<body>
+<header><h1>Skandenberg Pro</h1><small>Dublă eliminare corectată · finală + locul 3</small></header>
+<div class="wrap">
+<div class="card install"><b>Instalare:</b><br>iPhone: Safari → Share → <b>Adaugă pe ecranul principal</b>.</div>
+
+<div class="card" id="setupCard">
+<h2>Creează categoria</h2>
+<div class="row"><input id="catName" placeholder="Categorie: ex. -90 kg dreapta"><select id="seedMode"><option value="normal">Ordinea introdusă</option><option value="random">Amestecă sportivii</option></select></div>
+<p><small>Sportivii unul sub altul. Merge cu număr impar, BYE automat.</small></p>
+<textarea id="names" placeholder="Alex
+Mihai
+George
+Dima
+Panfil"></textarea>
+<div class="row" style="margin-top:10px"><button onclick="startTournament()">Generează</button><button class="secondary" onclick="loadDemo()">Exemplu</button></div>
+</div>
+
+<div class="card hidden" id="tournamentCard">
+<div class="row"><div><h2 id="title">Turneu</h2><div id="stats"></div></div><div class="row"><button class="secondary" onclick="saveNow()">Salvează</button><button class="red" onclick="resetAll()">Reset</button></div></div>
+<div class="notice" id="infoBox"></div><h2>Meci curent</h2><div id="currentMatch"></div>
+<div class="row" style="margin-top:12px"><button class="secondary" onclick="undo()">Înapoi</button><button class="secondary" onclick="copyResults()">Copiază rezultate</button></div>
+</div>
+
+<div class="card hidden" id="playersCard"><h2>Sportivi</h2><div id="playersTable"></div></div>
+<div class="card hidden" id="historyCard"><h2>Istoric meciuri</h2><div id="history"></div></div>
+<div class="footer">Versiune corectată: finală reset doar dacă finalistul din Loser Bracket bate sportivul neînvins.</div>
+</div>
+
+<script>
+let state=null;
+
+function cleanNames(t){return [...new Set(t.split(/\n|,|;/).map(x=>x.trim()).filter(Boolean))]}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function uid(){return Math.random().toString(36).slice(2,9)}
+function player(id){return state.players.find(p=>p.id===id)}
+function idsToNames(arr){return arr.map(id=>player(id).name).join(', ')}
+
+function loadDemo(){
+ document.getElementById('catName').value='-90 kg dreapta';
+ document.getElementById('names').value='Eu\nDan\nPopa\nMircea\nDarius\nVasile\nMio';
+}
+
+function startTournament(){
+ let names=cleanNames(document.getElementById('names').value);
+ if(names.length<2){alert('Ai nevoie de minim 2 sportivi.');return}
+ if(document.getElementById('seedMode').value==='random')names=shuffle(names);
+ const ids=names.map((n,i)=>({id:uid(),name:n,losses:0,seed:i+1,out:false,fights:0,place:null}));
+ state={
+   title:document.getElementById('catName').value.trim()||'Categorie skandenberg',
+   players:ids,
+   wbCurrent:ids.map(p=>p.id), wbNext:[],
+   lbCurrent:[], lbNext:[],
+   phase:'WB',
+   current:null,
+   history:[],
+   snapshots:[],
+   eliminated:[],
+   champion:null, second:null, third:null,
+   finalResetNeeded:false
+ };
+ makeNextMatch(); render(); saveNow();
+}
+
+function snapshot(){ state.snapshots.push(JSON.stringify({...state, snapshots:[]})); if(state.snapshots.length>30)state.snapshots.shift(); }
+function undo(){ if(!state || !state.snapshots.length)return; const snaps=state.snapshots; state=JSON.parse(snaps.pop()); state.snapshots=snaps; render(); saveNow(); }
+
+function activePlayers(){return state.players.filter(p=>!p.out)}
+function bracketAliveZero(){return state.players.filter(p=>!p.out && p.losses===0)}
+function bracketAliveOne(){return state.players.filter(p=>!p.out && p.losses===1)}
+
+function removeOutFromQueues(){
+ const ok=id=>!player(id).out;
+ ['wbCurrent','wbNext','lbCurrent','lbNext'].forEach(k=>state[k]=state[k].filter(ok));
+}
+
+function giveBye(queueName, nextName, label){
+ const q=state[queueName];
+ if(q.length===1){
+   const id=q.shift();
+   state[nextName].push(id);
+   state.history.push({text:player(id).name+' primește BYE în '+label});
+   return true;
+ }
+ return false;
+}
+
+function advancePhase(){
+ removeOutFromQueues();
+
+ if(activePlayers().length===1){
+   finishTournament(activePlayers()[0].id, state.eliminated[state.eliminated.length-1] || null);
+   return true;
+ }
+
+ const zeros=bracketAliveZero(), ones=bracketAliveOne();
+
+ if(zeros.length===1 && ones.length===1 && state.wbCurrent.length===0 && state.wbNext.length===0 && state.lbCurrent.length===0 && state.lbNext.length===0){
+   state.phase='FINAL';
+   state.current={bracket:'Marea Finală', a:zeros[0].id, b:ones[0].id, final:true};
+   return true;
+ }
+
+ if(state.phase==='WB' && state.wbCurrent.length===0){
+   if(state.wbNext.length>0){ state.wbCurrent=state.wbNext; state.wbNext=[]; }
+   if(state.lbCurrent.length>1 || state.lbNext.length>1 || (state.lbCurrent.length===1 && state.lbNext.length>0)){ state.phase='LB'; }
+   else if(state.wbCurrent.length===1 && state.lbCurrent.length===0 && state.lbNext.length===0 && ones.length>0){ state.lbCurrent=ones.map(p=>p.id); state.phase='LB'; }
+ }
+
+ if(state.phase==='LB' && state.lbCurrent.length===0){
+   if(state.lbNext.length>0){ state.lbCurrent=state.lbNext; state.lbNext=[]; }
+   else { state.phase='WB'; }
+ }
+
+ return false;
+}
+
+function makeNextMatch(){
+ state.current=null;
+ removeOutFromQueues();
+
+ let safety=0;
+ while(safety++<50){
+   if(activePlayers().length===1){ finishTournament(activePlayers()[0].id, state.eliminated[state.eliminated.length-1] || null); return; }
+
+   const zeros=bracketAliveZero(), ones=bracketAliveOne();
+   if(zeros.length===1 && ones.length===1 && state.wbCurrent.length<=1 && state.wbNext.length===0 && state.lbCurrent.length<=1 && state.lbNext.length===0){
+     state.phase='FINAL';
+     state.current={bracket:'Marea Finală', a:zeros[0].id, b:ones[0].id, final:true};
+     return;
+   }
+
+   if(state.phase==='WB'){
+     if(state.wbCurrent.length>=2){
+       const a=state.wbCurrent.shift(), b=state.wbCurrent.shift();
+       state.current={bracket:'Winner Bracket', a,b};
+       return;
+     }
+     if(giveBye('wbCurrent','wbNext','Winner Bracket')) continue;
+     if(state.wbNext.length>0){ state.wbCurrent=state.wbNext; state.wbNext=[]; }
+     state.phase='LB';
+     if(state.lbCurrent.length===0 && state.lbNext.length>0){ state.lbCurrent=state.lbNext; state.lbNext=[]; }
+     continue;
+   }
+
+   if(state.phase==='LB'){
+     if(state.lbCurrent.length>=2){
+       const a=state.lbCurrent.shift(), b=state.lbCurrent.shift();
+       const label = activePlayers().length===3 ? 'Meci pentru locul 3' : 'Loser Bracket';
+       state.current={bracket:label, a,b};
+       return;
+     }
+     if(giveBye('lbCurrent','lbNext','Loser Bracket')) continue;
+     if(state.lbNext.length>0){ state.lbCurrent=state.lbNext; state.lbNext=[]; continue; }
+     state.phase='WB';
+     continue;
+   }
+
+   if(state.phase==='FINAL'){
+     const z=bracketAliveZero()[0], o=bracketAliveOne()[0];
+     if(z && o){ state.current={bracket:'Marea Finală', a:z.id, b:o.id, final:true}; return; }
+   }
+
+   break;
+ }
+}
+
+function finishTournament(championId, lastLoserId){
+ state.champion=championId;
+ player(championId).place=1;
+ if(lastLoserId){ state.second=lastLoserId; player(lastLoserId).place=2; }
+ if(!state.third && state.eliminated.length>=2){
+   const thirdId=state.eliminated[state.eliminated.length-2];
+   if(thirdId && thirdId!==championId && thirdId!==lastLoserId){ state.third=thirdId; player(thirdId).place=3; }
+ }
+ state.phase='DONE';
+ state.current=null;
+}
+
+function chooseWinner(winnerId){
+ if(!state.current)return;
+ snapshot();
+
+ const m=state.current;
+ const loserId = m.a===winnerId ? m.b : m.a;
+ const w=player(winnerId), l=player(loserId);
+ w.fights++; l.fights++;
+
+ if(m.final){
+   // Dacă sportivul cu 0 înfrângeri pierde prima finală, se joacă finală reset.
+   if(l.losses===0 && w.losses===1){
+     l.losses=1;
+     state.history.push({text:'Marea Finală: '+w.name+' bate '+l.name+' — se joacă FINALĂ RESET'});
+     state.phase='RESET';
+     state.current={bracket:'Finală Reset', a:winnerId, b:loserId, finalReset:true};
+     render(); saveNow(); return;
+   } else {
+     l.losses++;
+     l.out=true;
+     state.eliminated.push(loserId);
+     state.history.push({text:(m.bracket||'Marea Finală')+': '+w.name+' bate '+l.name});
+     finishTournament(winnerId, loserId);
+     render(); saveNow(); return;
+   }
+ }
+
+ if(m.finalReset){
+   l.losses++;
+   l.out=true;
+   state.eliminated.push(loserId);
+   state.history.push({text:'Finală Reset: '+w.name+' bate '+l.name});
+   finishTournament(winnerId, loserId);
+   render(); saveNow(); return;
+ }
+
+ l.losses++;
+ if(l.losses>=2){
+   l.out=true;
+   state.eliminated.push(loserId);
+   if(activePlayers().length===2 && !state.third){
+     state.third=loserId;
+     l.place=3;
+   }
+ } else {
+   state.lbNext.push(loserId);
+ }
+
+ if(m.bracket==='Winner Bracket') state.wbNext.push(winnerId);
+ else state.lbNext.push(winnerId);
+
+ state.history.push({text:m.bracket+': '+w.name+' bate '+l.name});
+ makeNextMatch(); render(); saveNow();
+}
+
+function stage(){
+ if(state.phase==='DONE')return {text:'🏆 TURNEU TERMINAT', cls:'final'};
+ if(!state.current)return {text:'',cls:''};
+ if(state.current.finalReset)return {text:'🏆 FINALĂ RESET',cls:'final'};
+ if(state.current.final)return {text:'🏆 MAREA FINALĂ',cls:'final'};
+ if(state.current.bracket==='Meci pentru locul 3')return {text:'🥉 MECI PENTRU LOCUL 3',cls:'third'};
+ return {text:state.current.bracket,cls:''};
+}
+
+function standings(){
+ return [...state.players].sort((a,b)=>{
+   if(a.place&&b.place)return a.place-b.place;
+   if(a.place)return -1; if(b.place)return 1;
+   if(a.out!==b.out)return a.out?1:-1;
+   return a.losses-b.losses || a.fights-b.fights || a.seed-b.seed;
+ });
+}
+
+function podiumHtml(){
+ if(!state.champion)return '';
+ const c=player(state.champion), s=state.second?player(state.second):null, t=state.third?player(state.third):null;
+ return `<div class="podium">🏆 Locul 1: <b>${c?c.name:'-'}</b><br>🥈 Locul 2: <b>${s?s.name:'-'}</b><br>🥉 Locul 3: <b>${t?t.name:'-'}</b></div>`;
+}
+
+function render(){
+ if(!state)return;
+ document.getElementById('setupCard').classList.add('hidden');
+ document.getElementById('tournamentCard').classList.remove('hidden');
+ document.getElementById('playersCard').classList.remove('hidden');
+ document.getElementById('historyCard').classList.remove('hidden');
+ document.getElementById('title').innerText=state.title;
+
+ const alive=activePlayers().length, out=state.players.length-alive;
+ document.getElementById('stats').innerHTML=`<span class="pill orange">${state.players.length} sportivi</span><span class="pill ok">${alive} activi</span><span class="pill bad">${out} eliminați</span>`;
+
+ const info=document.getElementById('infoBox'), cm=document.getElementById('currentMatch');
+ const st=stage();
+
+ if(state.phase==='DONE'){
+   info.innerHTML='Turneu terminat.';
+   cm.innerHTML=`<div class="stage final">🏆 CAMPION: ${player(state.champion).name}</div>${podiumHtml()}`;
+ } else if(state.current){
+   const a=player(state.current.a), b=player(state.current.b);
+   info.innerHTML=st.text;
+   cm.innerHTML=`<div class="stage ${st.cls}">${st.text}</div>
+   <div class="match">
+   <div class="fighter">${a.name}<br><small>${a.losses} înfrângeri · ${a.fights} meciuri</small><br><br><button class="green" onclick="chooseWinner('${a.id}')">A câștigat</button></div>
+   <div class="vs">VS</div>
+   <div class="fighter">${b.name}<br><small>${b.losses} înfrângeri · ${b.fights} meciuri</small><br><br><button class="green" onclick="chooseWinner('${b.id}')">A câștigat</button></div>
+   </div>`;
+ } else {
+   info.innerHTML='Se pregătește următorul meci.';
+   cm.innerHTML='';
+ }
+
+ const rows=standings().map((p,i)=>`<tr><td>${p.place?p.place:i+1}</td><td>${p.name}</td><td>${p.losses}</td><td>${p.fights}</td><td>${p.place?'Loc '+p.place:(p.out?'Eliminat':'Activ')}</td></tr>`).join('');
+ document.getElementById('playersTable').innerHTML=`<table><tr><th>Loc</th><th>Sportiv</th><th>Înf.</th><th>Meciuri</th><th>Status</th></tr>${rows}</table>`;
+ document.getElementById('history').innerHTML=state.history.length?state.history.map((h,i)=>`<div class="pill">${i+1}. ${h.text}</div>`).join(' '):'<small>Nu există meciuri încă.</small>';
+}
+
+function saveNow(){if(state)localStorage.setItem('skandenberg_pwa_state_v3',JSON.stringify(state))}
+function resetAll(){if(confirm('Ștergi turneul curent?')){localStorage.removeItem('skandenberg_pwa_state_v3');localStorage.removeItem('skandenberg_pwa_state');location.reload()}}
+function copyResults(){
+ const text=[state.title,'','CLASAMENT:',...standings().map((p,i)=>`${p.place?p.place:i+1}. ${p.name} - ${p.losses} infrangeri, ${p.fights} meciuri ${p.place?'(loc '+p.place+')':p.out?'(eliminat)':'(activ)'}`),'','ISTORIC:',...state.history.map((h,i)=>`${i+1}. ${h.text}`)].join('\n');
+ navigator.clipboard.writeText(text).then(()=>alert('Rezultatele au fost copiate.'));
+}
+window.onload=function(){
+ const saved=localStorage.getItem('skandenberg_pwa_state_v3');
+ if(saved){try{state=JSON.parse(saved);render()}catch(e){}}
+}
+</script>
+</body>
+</html>
